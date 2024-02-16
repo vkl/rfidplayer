@@ -1,0 +1,2 @@
+recursive-include src/rfidplayer/static *
+recursive-include src/rfidplayer/templates *
