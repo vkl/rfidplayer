@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Player</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="static/css/styles.css">
+</head>
+<body>
+    <p>
+        <h4>The list of cards</h4>
+        <table>
+            <tbody id="cards">
+                <tr>
+                    <th colspan="2">Id</th>
+                    <th>Name</th>
+                    <th>Chromecast</th>
+                    <th>Media links</th>
+                    <th>Control</th>
+                </tr>
+            </tbody>
+        </table>
+    </p>
+    <p>
+        <button id="updatecards">Retrieve cards list</button>
+        <button id="newcard">New card</button>
+        <button id="delcard">Delete cards</button>
+    </p>
+    <p>
+        <h4>The list of chromecast devices</h4>
+        <table>
+            <colgroup>
+                <col style="width: 300px;">
+                <col style="width: auto;">
+                <col style="width: 200px;">
+                <col style="width: 200px;">
+              </colgroup>
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Status</th>
+                    <th>Volume</th>
+                    <th>Control</th>
+                </tr>
+            </thead>
+            <tbody id="casts">
+            </tbody>
+        </table>
+    </p>
+    <p>
+        <button id="updatecc">Retrieve chromecasts list</button>
+    </p>
+    <div id="editcard" class="hidden message-box">
+        <button id="closeBtn" class="close-btn">X</button>
+        <h4>Card</h4>
+        <p>
+            <input placeholder="Id" type="text" id="id"/>
+            <input placeholder="Name" type="text" id="name"/>
+            <select placeholder="Chromecast" type="select" id="chromecast">
+            </select><br/>
+            <textarea rows="10" cols="80" placeholder="Media links" id="media_links"></textarea><br/>
+            <button id="addcard">Add/Update card</button>
+        </p>
+    </div>
+</body>
+<script src="static/js/index.js"></script>
+</html>

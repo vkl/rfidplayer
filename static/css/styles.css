@@ -1,0 +1,109 @@
+/* Dark Theme */
+body {
+    background-color: #1e1e1e;
+    color: #fff;
+    font-family: 'Helvetica', Arial, sans-serif;
+}
+
+a {
+    text-decoration: none;
+    color: #b4cc52;
+}
+
+a:hover {
+    color: #d4eb8e;
+    cursor: pointer;
+}
+
+button, input[type="button"], input[type="submit"] {
+    border-radius: 10px;
+    padding: 10px 15px;
+    background-color: #2d2d2d;
+    color: #fff;
+    border: none;
+}
+
+select, textarea, input {
+    background-color: #3d3d3d;
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 10px 10px;
+    margin:  5px 5px;
+}
+
+button:hover, input[type="button"]:hover, input[type="submit"]:hover {
+    background-color: #3d3d3d;
+    cursor: pointer;
+}
+
+.multilineDiv {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    width: 300px;
+    border: 1px solid #ccc;
+    padding: 5px;
+}
+
+table {
+    width: 100%;
+    margin: 20px 0;
+    border-collapse: collapse;
+}
+
+th, td {
+    padding: 5px;
+    border: 1px solid #444;
+    text-align: left;
+    vertical-align: top;
+}
+
+th {
+    background-color: #2d2d2d;
+    color: #fff;
+}
+
+tr:nth-child(even) {
+    background-color: #333;
+}
+
+tr:hover {
+    background-color: #444;
+}
+
+.wrapper {
+    max-height: 100px;
+    overflow: auto;
+    padding: 0px;
+    margin: 0px;
+}
+
+.hidden {
+    display: none;
+}
+
+/* Style for message box div */
+.message-box {
+    background-color: #1e1e1e;
+    border: 1px solid #444;
+    color: #fff;
+    padding: 15px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    width: auto;
+    height: auto;
+    margin: 10px;
+    padding: 10px;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.close-btn {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    cursor: pointer;
+}
