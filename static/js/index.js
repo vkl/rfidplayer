@@ -1,6 +1,3 @@
-var timerGetCastInterval;
-let isGetCastInProgress = false;
-
 function updateCardTable(cards) {
     const cardsTable = document.getElementById("cards");
     const rows = cardsTable.querySelectorAll("tr:not(:first-child)");
@@ -61,8 +58,6 @@ async function playCard(element) {
             },
             body: JSON.stringify({})
         });
-        // updateCasts();
-        updateCast(castName);
     } catch (error) {
         console.error('Error:', error);
     }
@@ -87,8 +82,6 @@ async function castControl(element) {
         },
         body: JSON.stringify(payload)
     });
-    // updateCasts();
-    updateCast(castName);
 }
 
 function updateCastTable(casts) {
@@ -106,7 +99,7 @@ function updateCastTable(casts) {
         const newRow = document.createElement("tr")
         const newOption = document.createElement("option")
         newRow.innerHTML = `<td id="`+cast.name+`">`+cast.name+`</td>
-            <td>`+cast.status+`</td>
+            <td>`+cast.status+` `+cast.media_status+` `+cast.media_data+`</td>
             <td><input type="number" id="volume" step="0.05" min="0" max="1" value=`+cast.volume.toFixed(2)+`>
             <a class="setvolume" onclick="castControl(this)" href="#">set</a></td>
             <td>
@@ -201,47 +194,7 @@ async function updateCasts() {
         },
         body: JSON.stringify(payload)
     });
-    getCasts();
-    // var timerInterval = setInterval(getCasts, 5000);
-    // setTimeout(function() {
-    //     clearInterval(timerInterval);
-    // }, 40000);
-}
-
-function updateCast(name) {
-    if (timerGetCastInterval) {
-        console.log("Timer get case is already set");
-        return;
-    }
-    timerGetCastInterval = setInterval(getCast, 2000, name);
-    setTimeout(function() {
-        clearInterval(timerGetCastInterval);
-        timerGetCastInterval = null;
-    }, 30000);
-}
-
-async function getCast(name) {
-    if (isGetCastInProgress) {
-        console.log("get cast is in progress");
-        return;
-    }
-    isGetCastInProgress = true
-    try {
-        const response = await fetch("/api/casts/"+name, {
-            method: "GET",
-            headers: {
-            "Content-Type": "application/json",
-            }
-        });
-        const castStatus = await response.json();
-        console.log(Date(), castStatus.status);
-        const castTableRow = document.querySelector("#casts tr td[id='"+name+"']").parentElement
-        castTableRow.querySelector("td:nth-child(2)").innerText = castStatus.status;
-        castTableRow.querySelector("td:nth-child(3) input").value = castStatus.volume;
-    } catch (error) {
-        console.error('Error:', error);
-    }
-    isGetCastInProgress = false;
+    setInterval(getCasts, 5000);
 }
 
 async function getCasts() {
@@ -261,7 +214,6 @@ window.addEventListener("load", async (event) => {
     await getCards();
     await updateCasts();
     const addCardBtn = document.getElementById("addcard");
-    const newCardBtn = document.getElementById("newcard");
     const delCardBtn = document.getElementById("delcard");
     const updateCastBtn = document.getElementById("updatecc");
     const updateCardsListBtn = document.getElementById("updatecards");
