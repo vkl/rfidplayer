@@ -39,7 +39,12 @@ clean:
 		rm -rf ${BINARY_PATH}
 
 install: build
-		rsync -r -av . vkladov@192.168.1.105:/home/vkladov/rfidplayer/
+ifdef REMOTE_PATH 
+		rsync -r -av $(BINARY_PATH_LINUX_ARMV6) \
+		static templates cards.json ${REMOTE_PATH}
+else
+		$(error REMOTE_PATH is required)
+endif
 
 run:
 		go run cmd/main.go

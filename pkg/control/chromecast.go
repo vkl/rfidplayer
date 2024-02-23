@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/vkl/go-cast"
@@ -48,6 +49,7 @@ type ChromecastControl struct {
 	clients           map[string]*cast.Client
 	chromecastClients ChromecastClients
 	isDiscovering     bool
+	mutex             sync.Mutex
 }
 
 func NewChromeCastControl() *ChromecastControl {
@@ -84,6 +86,7 @@ func (cc *ChromecastControl) StartDiscovery(timeout time.Duration) {
 					go func() {
 						for {
 							event := <-client.Events
+							cc.mutex.Lock()
 							logging.Log.Debug(chromecastClient.Name, "event", event)
 							if value, ok := event.(events.StatusUpdated); ok {
 								chromecastClient.Volume = value.Level
@@ -99,10 +102,13 @@ func (cc *ChromecastControl) StartDiscovery(timeout time.Duration) {
 							}
 							if value, ok := event.(events.AppStopped); ok {
 								chromecastClient.Status = value.DisplayName
+								chromecastClient.MediaStatus = ""
+								chromecastClient.MediaData = ""
 							}
 							if _, ok := event.(events.Disconnected); ok {
 								client.Close()
 							}
+							cc.mutex.Unlock()
 						}
 					}()
 				} else {
