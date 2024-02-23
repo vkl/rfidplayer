@@ -79,10 +79,10 @@ func (cc *ChromecastControl) StartDiscovery(timeout time.Duration) {
 			case client := <-cc.discoveryService.Found():
 				if _, ok := cc.clients[client.Name()]; !ok {
 					cc.clients[client.Name()] = client
-					chromecastClient := ChromecastClient{
+					chromecastClient := &ChromecastClient{
 						Name: client.Name(),
 					}
-					cc.chromecastClients = append(cc.chromecastClients, &chromecastClient)
+					cc.chromecastClients = append(cc.chromecastClients, chromecastClient)
 					go func() {
 						for {
 							event := <-client.Events
@@ -90,6 +90,7 @@ func (cc *ChromecastControl) StartDiscovery(timeout time.Duration) {
 							logging.Log.Debug(chromecastClient.Name, "event", event)
 							if value, ok := event.(events.StatusUpdated); ok {
 								chromecastClient.Volume = value.Level
+								chromecastClient.Status = value.DisplayName
 							}
 							if value, ok := event.(events.MediaStatusUpdated); ok {
 								chromecastClient.MediaStatus = value.PlayerState
@@ -99,6 +100,8 @@ func (cc *ChromecastControl) StartDiscovery(timeout time.Duration) {
 							}
 							if value, ok := event.(events.AppStarted); ok {
 								chromecastClient.Status = value.DisplayName
+								chromecastClient.MediaStatus = ""
+								chromecastClient.MediaData = ""
 							}
 							if value, ok := event.(events.AppStopped); ok {
 								chromecastClient.Status = value.DisplayName
@@ -107,6 +110,13 @@ func (cc *ChromecastControl) StartDiscovery(timeout time.Duration) {
 							}
 							if _, ok := event.(events.Disconnected); ok {
 								client.Close()
+							}
+							if _, ok := event.(events.Connected); ok {
+								logging.Log.Debug("client is connected", "name", client.Name())
+							}
+							if _, ok := event.(events.ChannelClosed); ok {
+								logging.Log.Debug("channel is closed", "name", client.Name())
+								client.RemoveMediaController()
 							}
 							cc.mutex.Unlock()
 						}
@@ -136,23 +146,22 @@ func (cc *ChromecastControl) PlayCard(card Card) bool {
 	}
 	client := cc.clients[card.Chromecast]
 	ctx := context.Background()
-	if client.Receiver() != nil && client.IsPlaying(ctx) {
-		media, err := client.Media(ctx)
-		if err != nil {
-			logging.Log.Error("client control", "error", err)
-			return false
-		}
-		media.Stop(ctx)
-	} else {
-		err := client.Connect(ctx)
-		if err != nil {
-			logging.Log.Error(err.Error())
-			return false
-		}
+	if !client.IsConnected() {
+		client.Connect(ctx)
 	}
-	media, err := client.Media(ctx)
+	media, err := client.AttachMedia(ctx)
 	if err != nil {
-		logging.Log.Error("play card", "error", err)
+		logging.Log.Error(err.Error())
+		return false
+	}
+	if media != nil && client.IsPlaying(ctx) {
+		media.Stop(ctx)
+		client.Receiver().QuitApp(ctx)
+		client.NewMedia(ctx)
+	}
+	media, err = client.Media(ctx)
+	if err != nil {
+		logging.Log.Error(err.Error())
 		return false
 	}
 	var customData interface{}
@@ -162,7 +171,7 @@ func (cc *ChromecastControl) PlayCard(card Card) bool {
 			StreamType:  "BUFFERED",
 			ContentType: card.MediaLinks[0].ContentType,
 			MetaData: controllers.MediaMetadata{
-				MetadataType: "MUSIC_TRACK",
+				MetadataType: controllers.MUSIC_TRACK,
 				Artist:       card.Name,
 				Title:        card.Name,
 				// Images: []controllers.MediaImage{
@@ -209,12 +218,10 @@ func (cc *ChromecastControl) ClientControl(
 	}
 	ctx := context.Background()
 	client := cc.clients[name]
-	if client.Receiver() == nil {
-		if err := client.Connect(ctx); err != nil {
-			return false
-		}
+	if !client.IsConnected() {
+		client.Connect(ctx)
 	}
-	media, err := client.Media(ctx)
+	media, err := client.AttachMedia(ctx)
 	if err != nil {
 		logging.Log.Error("client control", "error", err)
 		return false
@@ -225,8 +232,6 @@ func (cc *ChromecastControl) ClientControl(
 		if client.IsPlaying(ctx) {
 			msg, err = media.Stop(ctx)
 		}
-		client.Receiver().QuitApp(ctx)
-		client.Close()
 	case "pause":
 		if client.IsPlaying(ctx) {
 			msg, err = media.Pause(ctx)
@@ -245,8 +250,8 @@ func (cc *ChromecastControl) ClientControl(
 		*volume.Level = float64(payload.Volume)
 		*volume.Muted = false
 		msg, err = client.Receiver().SetVolume(ctx, &volume)
-	case "getvolume":
-		_, err = client.Receiver().GetVolume(ctx)
+	case "connect":
+		logging.Log.Debug("client conect")
 	default:
 		err = fmt.Errorf("unknown command: %s", payload.Action)
 	}

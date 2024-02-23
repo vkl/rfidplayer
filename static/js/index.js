@@ -16,8 +16,8 @@ function updateCardTable(cards) {
                 <td>`+card.name+`</td>
                 <td>`+card.chromecast+`</td>
                 <td><div class="wrapper">`+links+`</div></td><td>
-                <a class="play" onclick="playCard(this)" href="#">play</a>
-                <a class="edit" onclick="editCard(this)" href="#">edit</a></td>`;
+                <a class="play" onclick="playCard(this)" href="javascript:void(0)">play</a>
+                <a class="edit" onclick="editCard(this)" href="javascript:void(0)">edit</a></td>`;
         cardsTable.appendChild(newRow);
     });
 }
@@ -101,13 +101,14 @@ function updateCastTable(casts) {
         newRow.innerHTML = `<td id="`+cast.name+`">`+cast.name+`</td>
             <td>`+cast.status+` `+cast.media_status+` `+cast.media_data+`</td>
             <td><input type="number" id="volume" step="0.05" min="0" max="1" value=`+cast.volume.toFixed(2)+`>
-            <a class="setvolume" onclick="castControl(this)" href="#">set</a></td>
+            <a class="setvolume" onclick="castControl(this)" href="javascript:void(0)">set</a></td>
             <td>
-                <a class="play" onclick="castControl(this)" href="#">play</a>
-                <a class="pause" onclick="castControl(this)" href="#">pause</a>
-                <a class="next" onclick="castControl(this)" href="#">next</a>
+                <a class="connect" onclick="castControl(this)" href="javascript:void(0)">connect</a>
+                <a class="play" onclick="castControl(this)" href="javascript:void(0)">play</a>
+                <a class="pause" onclick="castControl(this)" href="javascript:void(0)">pause</a>
+                <a class="next" onclick="castControl(this)" href="javascript:void(0)">next</a>
                 <a class="prev" onclick="castControl(this)" href="#">prev</a>
-                <a class="stop" onclick="castControl(this)" href="#">stop</a>
+                <a class="stop" onclick="castControl(this)" href="javascript:void(0)">stop</a>
             </td>`;
         newOption.value = newOption.textContent = cast.name;
         castTable.appendChild(newRow);
