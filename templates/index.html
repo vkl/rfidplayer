@@ -17,6 +17,7 @@
                     <th>Chromecast</th>
                     <th>Media links</th>
                     <th>Control</th>
+                    <th>Max Volume</th>
                 </tr>
             </tbody>
         </table>
@@ -27,7 +28,7 @@
         <button id="delcard">Delete cards</button>
     </p>
     <p>
-        <h4>The list of chromecast devices</h4>
+        <h4>Current playing</h4>
         <table>
             <colgroup>
                 <col style="width: 300px;">
@@ -43,7 +44,7 @@
                     <th>Control</th>
                 </tr>
             </thead>
-            <tbody id="casts">
+            <tbody id="castStatus">
             </tbody>
         </table>
     </p>
@@ -57,7 +58,8 @@
             <input placeholder="Id" type="text" id="id"/>
             <input placeholder="Name" type="text" id="name"/>
             <select placeholder="Chromecast" type="select" id="chromecast">
-            </select><br/>
+            </select>
+            <input placeholder="MaxVolume" type="number" value="1" step="0.05" min="0" max="1" id="maxvolume"/></br>
             <textarea rows="10" cols="80" placeholder="Media links" id="media_links"></textarea><br/>
             <button id="addcard">Add/Update card</button>
         </p>

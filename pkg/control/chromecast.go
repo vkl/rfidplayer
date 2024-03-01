@@ -3,19 +3,46 @@ package control
 import (
 	"context"
 	"fmt"
-	"sort"
-	"sync"
 	"time"
 
 	"github.com/vkl/go-cast"
 	"github.com/vkl/go-cast/api"
 	"github.com/vkl/go-cast/controllers"
 	"github.com/vkl/go-cast/discovery"
-	"github.com/vkl/go-cast/events"
 	"github.com/vkl/rfidplayer/pkg/logging"
 )
 
-const DISCOVERY_TIMEOUT = 10
+type Action byte
+
+const (
+	PLAY Action = iota
+	PAUSE
+	STOP
+	NEXT
+	PREV
+	SETVOLUME
+)
+
+func (action Action) String() string {
+	switch action {
+	case PLAY:
+		return "play"
+	case PAUSE:
+		return "pause"
+	case STOP:
+		return "stop"
+	case NEXT:
+		return "next"
+	case PREV:
+		return "prev"
+	case SETVOLUME:
+		return "setvolume"
+	default:
+		return "unknown"
+	}
+}
+
+const DISCOVERY_TIMEOUT = 30
 
 type ClientAction struct {
 	Action string  `json:"action"`
@@ -30,33 +57,19 @@ type ChromecastClient struct {
 	Volume      float64 `json:"volume"`
 }
 
-type ChromecastClients []*ChromecastClient
-
-func (c ChromecastClients) Len() int {
-	return len(c)
-}
-
-func (c ChromecastClients) Less(i, j int) bool {
-	return c[i].Name < c[j].Name
-}
-
-func (c ChromecastClients) Swap(i, j int) {
-	c[i], c[j] = c[j], c[i]
-}
-
 type ChromecastControl struct {
-	discoveryService  *discovery.Service
-	clients           map[string]*cast.Client
-	chromecastClients ChromecastClients
+	discoveryService *discovery.Service
+	// clients           map[string]*cast.Client
+	castControl       *CastController
 	isDiscovering     bool
-	mutex             sync.Mutex
+	currentChromecast *cast.Client
 }
 
-func NewChromeCastControl() *ChromecastControl {
+func NewChromeCastControl(castControl *CastController) *ChromecastControl {
 	chromecastControl := ChromecastControl{
-		clients:           make(map[string]*cast.Client, 0),
-		chromecastClients: make(ChromecastClients, 0),
-		isDiscovering:     false,
+		// clients:       make(map[string]*cast.Client, 0),
+		castControl:   castControl,
+		isDiscovering: false,
 	}
 	return &chromecastControl
 }
@@ -77,53 +90,20 @@ func (cc *ChromecastControl) StartDiscovery(timeout time.Duration) {
 		for {
 			select {
 			case client := <-cc.discoveryService.Found():
-				if _, ok := cc.clients[client.Name()]; !ok {
-					cc.clients[client.Name()] = client
-					chromecastClient := &ChromecastClient{
-						Name: client.Name(),
-					}
-					cc.chromecastClients = append(cc.chromecastClients, chromecastClient)
-					go func() {
-						for {
-							event := <-client.Events
-							cc.mutex.Lock()
-							logging.Log.Debug(chromecastClient.Name, "event", event)
-							if value, ok := event.(events.StatusUpdated); ok {
-								chromecastClient.Volume = value.Level
-								chromecastClient.Status = value.DisplayName
-							}
-							if value, ok := event.(events.MediaStatusUpdated); ok {
-								chromecastClient.MediaStatus = value.PlayerState
-								if value.MetaData != nil {
-									chromecastClient.MediaData = *(value.MetaData)
-								}
-							}
-							if value, ok := event.(events.AppStarted); ok {
-								chromecastClient.Status = value.DisplayName
-								chromecastClient.MediaStatus = ""
-								chromecastClient.MediaData = ""
-							}
-							if value, ok := event.(events.AppStopped); ok {
-								chromecastClient.Status = value.DisplayName
-								chromecastClient.MediaStatus = ""
-								chromecastClient.MediaData = ""
-							}
-							if _, ok := event.(events.Disconnected); ok {
-								client.Close()
-							}
-							if _, ok := event.(events.Connected); ok {
-								logging.Log.Debug("client is connected", "name", client.Name())
-							}
-							if _, ok := event.(events.ChannelClosed); ok {
-								logging.Log.Debug("channel is closed", "name", client.Name())
-								client.RemoveMediaController()
-							}
-							cc.mutex.Unlock()
-						}
-					}()
-				} else {
-					cc.clients[client.Name()] = client
+				// if _, ok := cc.clients[client.Name()]; !ok {
+				// cc.clients[client.Name()] = client
+				err := cc.castControl.UpdateCast(Cast{
+					Name:   client.Name(),
+					IPAddr: client.IP(),
+					Port:   client.Port(),
+					Info:   client.GetInfo(),
+				})
+				if err != nil {
+					logging.Log.Error(err.Error())
 				}
+				// } else {
+				// 	cc.clients[client.Name()] = client
+				// }
 			case <-ctx.Done():
 				logging.Log.Info("Discovery complete")
 				cancelFunc()
@@ -135,36 +115,44 @@ func (cc *ChromecastControl) StartDiscovery(timeout time.Duration) {
 	}()
 }
 
-func (cc *ChromecastControl) GetClients() ChromecastClients {
-	sort.Sort(cc.chromecastClients)
-	return cc.chromecastClients
+func (cc *ChromecastControl) GetClients() Casts {
+	return cc.castControl.GetCasts()
+}
+
+func (cc *ChromecastControl) CastStatus() cast.DisplayStatus {
+	if cc.currentChromecast == nil {
+		logging.Log.Debug("chromecast not used")
+		return cast.DisplayStatus{}
+	}
+	return cc.currentChromecast.DisplayStatus()
 }
 
 func (cc *ChromecastControl) PlayCard(card Card) bool {
-	if _, ok := cc.clients[card.Chromecast]; !ok {
+	var castInfo Cast
+	var ok bool
+	if castInfo, ok = cc.castControl.GetCastByName(card.Chromecast); !ok {
 		return false
 	}
-	client := cc.clients[card.Chromecast]
+	if cc.currentChromecast != nil {
+		cc.currentChromecast.Close()
+	}
+	cc.currentChromecast = cast.NewClient(castInfo.IPAddr, castInfo.Port)
+	cc.currentChromecast.SetName(castInfo.Info["fn"])
+	cc.currentChromecast.SetInfo(castInfo.Info)
+	client := cc.currentChromecast
 	ctx := context.Background()
 	if !client.IsConnected() {
-		client.Connect(ctx)
+		if err := client.Connect(ctx); err != nil {
+			logging.Log.Error(err.Error())
+			return false
+		}
 	}
-	media, err := client.AttachMedia(ctx)
+	media, err := client.Media(ctx, cast.AppMedia)
 	if err != nil {
-		logging.Log.Error(err.Error())
+		logging.Log.Error("play media", "error", err)
 		return false
 	}
-	if media != nil && client.IsPlaying(ctx) {
-		media.Stop(ctx)
-		client.Receiver().QuitApp(ctx)
-		client.NewMedia(ctx)
-	}
-	media, err = client.Media(ctx)
-	if err != nil {
-		logging.Log.Error(err.Error())
-		return false
-	}
-	var customData interface{}
+
 	if len(card.MediaLinks) > 0 {
 		mediaItem := controllers.MediaItem{
 			ContentId:   card.MediaLinks[0].Link,
@@ -183,7 +171,7 @@ func (cc *ChromecastControl) PlayCard(card Card) bool {
 				// },
 			},
 		}
-		_, err := media.LoadMedia(ctx, mediaItem, 0, true, customData)
+		_, err := media.LoadMedia(ctx, mediaItem, 0, true, nil)
 		if err != nil {
 			logging.Log.Error("play media", "error", err, "media", mediaItem.ContentId)
 		}
@@ -201,27 +189,69 @@ func (cc *ChromecastControl) PlayCard(card Card) bool {
 					PreloadTime: 5,
 				})
 			}
-			_, err = media.QueueInsert(ctx, mediaItems, 0, true, customData)
+			_, err = media.QueueInsert(ctx, mediaItems, 0, true, nil)
 			if err != nil {
 				logging.Log.Error("queue insert media items", "error", err)
 			}
 		}
 	}
-
 	return true
 }
 
-func (cc *ChromecastControl) ClientControl(
-	name string, payload ClientAction) bool {
-	if _, ok := cc.clients[name]; !ok {
+func (cc *ChromecastControl) Control(action Action) bool {
+	if cc.currentChromecast == nil {
+		logging.Log.Debug("chromecast not used")
+		return false
+	}
+	payload := ClientAction{
+		Action: action.String(),
+	}
+	cc.ClientControl(payload)
+	return true
+}
+
+func (cc *ChromecastControl) SetVolume(volume float64) bool {
+	if cc.currentChromecast == nil {
+		logging.Log.Debug("chromecast not used")
+		return false
+	}
+	payload := ClientAction{
+		Action: SETVOLUME.String(),
+		Volume: volume,
+	}
+	cc.ClientControl(payload)
+	return true
+}
+
+func (cc *ChromecastControl) GetVolume() (float64, bool) {
+	if cc.currentChromecast == nil {
+		logging.Log.Debug("chromecast not used")
+		return 0, false
+	}
+	client := cc.currentChromecast
+	volume, err := client.Receiver().GetVolume(context.Background())
+	if err != nil {
+		logging.Log.Error(err.Error())
+		return 0, false
+	}
+	return *volume.Level, true
+}
+
+func (cc *ChromecastControl) ClientControl(payload ClientAction) bool {
+	logging.Log.Debug("client control", "current", cc.currentChromecast)
+	if cc.currentChromecast == nil {
+		logging.Log.Debug("chromecast not used")
 		return false
 	}
 	ctx := context.Background()
-	client := cc.clients[name]
+	client := cc.currentChromecast
 	if !client.IsConnected() {
 		client.Connect(ctx)
 	}
-	media, err := client.AttachMedia(ctx)
+	receiver := client.Receiver()
+	var media *controllers.MediaController
+	var err error
+	media, err = client.Media(ctx, cast.AppMedia)
 	if err != nil {
 		logging.Log.Error("client control", "error", err)
 		return false
@@ -229,11 +259,11 @@ func (cc *ChromecastControl) ClientControl(
 	var msg *api.CastMessage
 	switch payload.Action {
 	case "stop":
-		if client.IsPlaying(ctx) {
+		if receiver.IsPlaying(ctx) {
 			msg, err = media.Stop(ctx)
 		}
 	case "pause":
-		if client.IsPlaying(ctx) {
+		if receiver.IsPlaying(ctx) {
 			msg, err = media.Pause(ctx)
 		}
 	case "play":
@@ -250,8 +280,6 @@ func (cc *ChromecastControl) ClientControl(
 		*volume.Level = float64(payload.Volume)
 		*volume.Muted = false
 		msg, err = client.Receiver().SetVolume(ctx, &volume)
-	case "connect":
-		logging.Log.Debug("client conect")
 	default:
 		err = fmt.Errorf("unknown command: %s", payload.Action)
 	}

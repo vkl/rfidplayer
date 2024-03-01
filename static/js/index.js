@@ -17,7 +17,8 @@ function updateCardTable(cards) {
                 <td>`+card.chromecast+`</td>
                 <td><div class="wrapper">`+links+`</div></td><td>
                 <a class="play" onclick="playCard(this)" href="javascript:void(0)">play</a>
-                <a class="edit" onclick="editCard(this)" href="javascript:void(0)">edit</a></td>`;
+                <a class="edit" onclick="editCard(this)" href="javascript:void(0)">edit</a></td>
+                <td>`+card.maxvolume+`</td>`;
         cardsTable.appendChild(newRow);
     });
 }
@@ -37,10 +38,14 @@ async function editCard(element) {
     const cardMediaLinks = element
         .closest("tr")
         .querySelector("td:nth-child(5)").textContent
+    const maxVolume = element
+        .closest("tr")
+        .querySelector("td:nth-child(7)").textContent
     divCardData.querySelector("#media_links").value = cardMediaLinks
     divCardData.querySelector("#id").value = cardId
     divCardData.querySelector("#chromecast").value = cardChromecast
     divCardData.querySelector("#name").value = cardName
+    divCardData.querySelector("#maxvolume").value = maxVolume
 }
 
 async function playCard(element) {
@@ -75,8 +80,8 @@ async function castControl(element) {
         "action": action,
         "volume": parseFloat(volume)
     };
-    const response = await fetch("/api/casts/"+castName, {
-        method: "POST",
+    const response = await fetch("/api/casts", {
+        method: "PUT",
         headers: {
           "Content-Type": "application/json",
         },
@@ -84,36 +89,46 @@ async function castControl(element) {
     });
 }
 
-function updateCastTable(casts) {
-    const castTable = document.getElementById("casts");
-    const selectCast = document.getElementById("chromecast")
-    const rows = castTable.querySelectorAll("tr");
-    rows.forEach((row) => {
-        castTable.removeChild(row);
-    })
-    const options = selectCast.querySelectorAll("option")
-    options.forEach((option) => {
-        selectCast.removeChild(option);
-    })
-    for (const cast of casts) {
-        const newRow = document.createElement("tr")
-        const newOption = document.createElement("option")
-        newRow.innerHTML = `<td id="`+cast.name+`">`+cast.name+`</td>
-            <td>`+cast.status+` `+cast.media_status+` `+cast.media_data+`</td>
-            <td><input type="number" id="volume" step="0.05" min="0" max="1" value=`+cast.volume.toFixed(2)+`>
-            <a class="setvolume" onclick="castControl(this)" href="javascript:void(0)">set</a></td>
-            <td>
-                <a class="connect" onclick="castControl(this)" href="javascript:void(0)">connect</a>
-                <a class="play" onclick="castControl(this)" href="javascript:void(0)">play</a>
-                <a class="pause" onclick="castControl(this)" href="javascript:void(0)">pause</a>
-                <a class="next" onclick="castControl(this)" href="javascript:void(0)">next</a>
-                <a class="prev" onclick="castControl(this)" href="#">prev</a>
-                <a class="stop" onclick="castControl(this)" href="javascript:void(0)">stop</a>
-            </td>`;
-        newOption.value = newOption.textContent = cast.name;
-        castTable.appendChild(newRow);
-        selectCast.appendChild(newOption)
+function optionExists(selectElement, valueToCheck) {
+    return Array.from(selectElement.options).some(option => option.value === valueToCheck);
+}
+
+function updateStatus() {
+    setInterval(getStatus, 5000);
+}
+
+async function getStatus() {
+    try {
+        const response = await fetch('/api/status');
+        if (!response.ok) {
+            throw new Error('Network response was not ok');
+        }
+        const statusCast = await response.json();
+        updateStatusTable(statusCast)
+    } catch (error) {
+        console.error('Error:', error);
     }
+}
+
+function updateStatusTable(cast) {
+    const castStatusTable = document.getElementById("castStatus");
+    const rows = castStatusTable.querySelectorAll("tr");
+    rows.forEach((row) => {
+        castStatusTable.removeChild(row);
+    })
+    const newRow = document.createElement("tr")
+    newRow.innerHTML = `<td id="`+cast.name+`">`+cast.name+`</td>
+    <td>`+cast.status+` `+cast.media_status+` `+cast.media_data+`</td>
+    <td><input type="number" id="volume" step="0.05" min="0" max="1" value=`+cast.volume.toFixed(2)+`>
+    <a class="setvolume" onclick="castControl(this)" href="javascript:void(0)">set</a></td>
+    <td>
+        <a class="play" onclick="castControl(this)" href="javascript:void(0)">play</a>
+        <a class="pause" onclick="castControl(this)" href="javascript:void(0)">pause</a>
+        <a class="next" onclick="castControl(this)" href="javascript:void(0)">next</a>
+        <a class="prev" onclick="castControl(this)" href="#">prev</a>
+        <a class="stop" onclick="castControl(this)" href="javascript:void(0)">stop</a>
+    </td>`;
+    castStatusTable.appendChild(newRow);
 }
 
 async function getCards() {
@@ -139,6 +154,8 @@ async function addCard(event) {
                 tokens = media_link.split(";")
                 payload[input.id].push({"link": tokens[0], "content_type": tokens[1]});
             }
+        } else if (input.id == "maxvolume") {
+            payload[input.id] = parseFloat(input.value);
         } else {
             payload[input.id] = input.value;
         }
@@ -195,7 +212,10 @@ async function updateCasts() {
         },
         body: JSON.stringify(payload)
     });
-    setInterval(getCasts, 5000);
+    const id = setInterval(getCasts, 5000);
+    setTimeout(() => {
+        clearInterval(id);
+    }, 20000);
 }
 
 async function getCasts() {
@@ -205,7 +225,14 @@ async function getCasts() {
             throw new Error('Network response was not ok');
         }
         const casts = await response.json();
-        updateCastTable(casts)
+        const selectCast = document.getElementById("chromecast")
+        for (const cast of casts) {
+            if (!optionExists(selectCast, cast.name)) {
+                const newOption = document.createElement("option")
+                newOption.value = newOption.textContent = cast.name;
+                selectCast.appendChild(newOption)
+            }
+        }
     } catch (error) {
         console.error('Error:', error);
     }
@@ -213,7 +240,8 @@ async function getCasts() {
 
 window.addEventListener("load", async (event) => {
     await getCards();
-    await updateCasts();
+    // await updateCasts();
+    updateStatus();
     const addCardBtn = document.getElementById("addcard");
     const delCardBtn = document.getElementById("delcard");
     const updateCastBtn = document.getElementById("updatecc");

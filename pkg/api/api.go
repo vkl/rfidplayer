@@ -3,10 +3,13 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"text/template"
 	"time"
 
@@ -16,87 +19,109 @@ import (
 	"github.com/vkl/rfidplayer/pkg/logging"
 )
 
-var (
-	cardController    *control.CardController
-	chromecastControl *control.ChromecastControl
-)
-
-func GetCards(w http.ResponseWriter, r *http.Request) {
-	encoder := json.NewEncoder(w)
-	encoder.Encode(cardController.Cards)
+func GetCards(cardController *control.CardController) func(http.ResponseWriter, *http.Request) {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		encoder := json.NewEncoder(w)
+		encoder.Encode(cardController.Cards)
+	})
 }
 
-func GetCard(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	logging.Log.Debug("", "vars", vars)
-	if _, ok := cardController.Cards[vars["id"]]; !ok {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-	encoder := json.NewEncoder(w)
-	encoder.Encode(cardController.Cards[vars["id"]])
+func GetCard(cardController *control.CardController) func(http.ResponseWriter, *http.Request) {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		logging.Log.Debug("", "vars", vars)
+		if _, ok := cardController.Cards[vars["id"]]; !ok {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		encoder := json.NewEncoder(w)
+		encoder.Encode(cardController.Cards[vars["id"]])
+	})
 }
 
-func AddCard(w http.ResponseWriter, r *http.Request) {
-	defer r.Body.Close()
-	card := control.Card{}
-	decoder := json.NewDecoder(r.Body)
-	if err := decoder.Decode(&card); err != nil {
-		logging.Log.Error("add card", "error", err)
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	cardController.AddCard(card)
-	encoder := json.NewEncoder(w)
-	encoder.Encode(cardController.Cards)
+func AddCard(cardController *control.CardController) func(http.ResponseWriter, *http.Request) {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+		card := control.Card{}
+		decoder := json.NewDecoder(r.Body)
+		if err := decoder.Decode(&card); err != nil {
+			logging.Log.Error("add card", "error", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		cardController.AddCard(card)
+		encoder := json.NewEncoder(w)
+		encoder.Encode(cardController.Cards)
+	})
 }
 
-func DelCard(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	logging.Log.Debug("", "vars", vars)
-	cardController.DelCard(vars["id"])
-	encoder := json.NewEncoder(w)
-	encoder.Encode(cardController.Cards)
+func DelCard(cardController *control.CardController) func(http.ResponseWriter, *http.Request) {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		logging.Log.Debug("", "vars", vars)
+		cardController.DelCard(vars["id"])
+		encoder := json.NewEncoder(w)
+		encoder.Encode(cardController.Cards)
+	})
 }
 
-func PlayCard(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	if _, ok := cardController.Cards[vars["id"]]; !ok {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-	card := cardController.Cards[vars["id"]]
-	chromecastControl.PlayCard(card)
-	w.WriteHeader(http.StatusAccepted)
+func PlayCard(
+	chromecastControl *control.ChromecastControl,
+	cardController *control.CardController) func(http.ResponseWriter, *http.Request) {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		if _, ok := cardController.Cards[vars["id"]]; !ok {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		card := cardController.Cards[vars["id"]]
+		chromecastControl.PlayCard(card)
+		w.WriteHeader(http.StatusAccepted)
+	})
 }
 
-func GetCasts(w http.ResponseWriter, r *http.Request) {
-	encoder := json.NewEncoder(w)
-	if err := encoder.Encode(chromecastControl.GetClients()); err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
-	}
+func GetCasts(chromecastControl *control.ChromecastControl) func(http.ResponseWriter, *http.Request) {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		encoder := json.NewEncoder(w)
+		if err := encoder.Encode(chromecastControl.GetClients()); err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}
+	})
 }
 
-func DiscoverCasts(w http.ResponseWriter, r *http.Request) {
-	chromecastControl.StartDiscovery(control.DISCOVERY_TIMEOUT * time.Second)
-	w.WriteHeader(http.StatusAccepted)
+func DiscoverCasts(chromecastControl *control.ChromecastControl) func(http.ResponseWriter, *http.Request) {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		chromecastControl.StartDiscovery(control.DISCOVERY_TIMEOUT * time.Second)
+		w.WriteHeader(http.StatusAccepted)
+	})
 }
 
-func ControlCasts(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	payload := control.ClientAction{}
-	decoder := json.NewDecoder(r.Body)
-	defer r.Body.Close()
-	if err := decoder.Decode(&payload); err != nil {
-		logging.Log.Error("control cast", "error", err)
-		w.WriteHeader(http.StatusServiceUnavailable)
-		return
-	}
-	if !chromecastControl.ClientControl(vars["name"], payload) {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-	w.WriteHeader(http.StatusAccepted)
+func CastStatus(
+	chromecastControl *control.ChromecastControl,
+	cardController *control.CardController) func(http.ResponseWriter, *http.Request) {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		status := chromecastControl.CastStatus()
+		encoder := json.NewEncoder(w)
+		encoder.Encode(status)
+	})
+}
+
+func ControlCasts(chromecastControl *control.ChromecastControl) func(http.ResponseWriter, *http.Request) {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		payload := control.ClientAction{}
+		decoder := json.NewDecoder(r.Body)
+		defer r.Body.Close()
+		if err := decoder.Decode(&payload); err != nil {
+			logging.Log.Error("control cast", "error", err)
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		if !chromecastControl.ClientControl(payload) {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+	})
 }
 
 func SiteHandler(w http.ResponseWriter, r *http.Request) {
@@ -108,6 +133,12 @@ func SiteHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	var data interface{}
 	tmpl.Execute(w, data)
+}
+
+func Debug(w http.ResponseWriter, r *http.Request) {
+	numGoroutines := runtime.NumGoroutine()
+	responseText := fmt.Sprintf("Number of goroutines: %d\n", numGoroutines)
+	io.WriteString(w, responseText)
 }
 
 func noCache(next http.Handler) http.Handler {
@@ -124,7 +155,12 @@ func ContentJson(next http.Handler) http.Handler {
 	})
 }
 
-func StartApp() {
+func StartApp(
+	host string,
+	port int,
+	cardController *control.CardController,
+	chromcastController *control.ChromecastControl) {
+
 	r := mux.NewRouter()
 	r.Use(noCache)
 	r.PathPrefix("/static/").Handler(
@@ -133,26 +169,22 @@ func StartApp() {
 	r.HandleFunc("/", SiteHandler).Methods("GET")
 	apiPrefix := r.PathPrefix("/api").Subrouter()
 	apiPrefix.Use(ContentJson)
-	apiPrefix.HandleFunc("/cards", GetCards).Methods("GET")
-	apiPrefix.HandleFunc("/casts", GetCasts).Methods("GET")
-	apiPrefix.HandleFunc("/casts", DiscoverCasts).Methods("POST")
-	apiPrefix.HandleFunc("/casts/{name}", ControlCasts).Methods("POST")
-	apiPrefix.HandleFunc("/cards", AddCard).Methods("POST")
-	apiPrefix.HandleFunc("/cards/{id}", DelCard).Methods("DELETE")
-	apiPrefix.HandleFunc("/cards/{id}", GetCard).Methods("GET")
-	apiPrefix.HandleFunc("/cards/{id}", PlayCard).Methods("POST")
-
-	var err error
-	cardController, err = control.NewCardController("cards.json")
-	if err != nil {
-		log.Fatal(err)
-	}
-	chromecastControl = control.NewChromeCastControl()
-	chromecastControl.StartDiscovery(control.DISCOVERY_TIMEOUT * time.Second)
+	apiPrefix.HandleFunc("/cards", GetCards(cardController)).Methods("GET")
+	apiPrefix.HandleFunc("/casts", GetCasts(chromcastController)).Methods("GET")
+	apiPrefix.HandleFunc("/casts", DiscoverCasts(chromcastController)).Methods("POST")
+	apiPrefix.HandleFunc("/casts", ControlCasts(chromcastController)).Methods("PUT")
+	// apiPrefix.HandleFunc("/casts/{name}", GetCastStatus(chromcastController)).Methods("GET")
+	// apiPrefix.HandleFunc("/casts/{name}", CastStatus(chromcastController)).Methods("GET")
+	apiPrefix.HandleFunc("/cards", AddCard(cardController)).Methods("POST")
+	apiPrefix.HandleFunc("/cards/{id}", DelCard(cardController)).Methods("DELETE")
+	apiPrefix.HandleFunc("/cards/{id}", GetCard(cardController)).Methods("GET")
+	apiPrefix.HandleFunc("/status", CastStatus(chromcastController, cardController)).Methods("GET")
+	apiPrefix.HandleFunc("/cards/{id}", PlayCard(chromcastController, cardController)).Methods("POST")
+	apiPrefix.HandleFunc("/debug", Debug).Methods("GET")
 
 	srv := &http.Server{
 		Handler:      r,
-		Addr:         "127.0.0.1:8080",
+		Addr:         fmt.Sprintf("%s:%d", host, port),
 		WriteTimeout: 15 * time.Second,
 		ReadTimeout:  15 * time.Second,
 	}

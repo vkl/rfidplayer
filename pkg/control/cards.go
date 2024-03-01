@@ -9,10 +9,6 @@ import (
 	"github.com/vkl/rfidplayer/pkg/logging"
 )
 
-var (
-	mutex sync.Mutex
-)
-
 type Card struct {
 	Id         string `json:"id"`
 	Name       string `json:"name"`
@@ -20,12 +16,14 @@ type Card struct {
 		Link        string `json:"link"`
 		ContentType string `json:"content_type"`
 	} `json:"media_links"`
-	Chromecast string `json:"chromecast"`
+	Chromecast string  `json:"chromecast"`
+	MaxVolume  float64 `json:"maxvolume"`
 }
 
 type CardController struct {
 	FileName string
 	Cards    map[string]Card
+	mutex    sync.Mutex
 }
 
 func NewCardController(fname string) (*CardController, error) {
@@ -40,8 +38,8 @@ func NewCardController(fname string) (*CardController, error) {
 }
 
 func (c *CardController) updateCardList() error {
-	mutex.Lock()
-	defer mutex.Unlock()
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 	f, err := os.OpenFile(c.FileName, os.O_CREATE|os.O_RDONLY, 0644)
 	if err != nil {
 		return err
@@ -78,8 +76,8 @@ func (c *CardController) DelCard(id string) bool {
 }
 
 func (c *CardController) save() error {
-	mutex.Lock()
-	defer mutex.Unlock()
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 	f, err := os.OpenFile(c.FileName, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0644)
 	if err != nil {
 		return err

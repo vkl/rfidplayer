@@ -4,13 +4,19 @@ go 1.21
 
 require (
 	github.com/gorilla/mux v1.8.1
-	golang.org/x/net v0.0.0-20161013035702-8b4af36cd21a
+	github.com/urfave/cli v1.22.14
+	github.com/vkl/go-cast v0.0.0-20240228052059-b3488d7c5ea0
+	github.com/warthog618/gpiod v0.8.2
+	go.bug.st/serial v1.6.2
+	golang.org/x/net v0.21.0
 )
 
 require (
-	github.com/gogo/protobuf v0.0.0-20161014173244-50d1bd39ce4e // indirect
-	github.com/hashicorp/go.net v0.0.0-20151006203346-104dcad90073 // indirect
-	github.com/hashicorp/mdns v0.0.0-20151206042412-9d85cf22f9f8 // indirect
-	github.com/miekg/dns v0.0.0-20161006100029-fc4e1e2843d8 // indirect
-	github.com/vkl/go-cast v0.0.0-20240222195642-ec5564627346 // indirect
+	github.com/cpuguy83/go-md2man/v2 v2.0.2 // indirect
+	github.com/creack/goselect v0.1.2 // indirect
+	github.com/gogo/protobuf v1.3.2 // indirect
+	github.com/hashicorp/mdns v1.0.5 // indirect
+	github.com/miekg/dns v1.1.41 // indirect
+	github.com/russross/blackfriday/v2 v2.1.0 // indirect
+	golang.org/x/sys v0.17.0 // indirect
 )
