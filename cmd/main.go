@@ -1,12 +1,12 @@
 package main
 
 import (
-	"fmt"
-	"log"
+	"log/slog"
+	"os"
 
 	"github.com/vkl/rfidplayer/pkg/api"
 	"github.com/vkl/rfidplayer/pkg/control"
-	"github.com/vkl/rfidplayer/pkg/logging"
+	_ "github.com/vkl/rfidplayer/pkg/logging"
 )
 
 var (
@@ -19,20 +19,21 @@ func init() {
 	var err error
 	cardController, err = control.NewCardController("cards.json")
 	if err != nil {
-		log.Fatal(err)
+		slog.Error(err.Error())
+		os.Exit(1)
 	}
-	logging.Log.Debug(cardController.FileName)
+	slog.Debug(cardController.FileName)
 
 	castController, err = control.NewCastController("casts.json")
 	if err != nil {
-		log.Fatal(err)
+		slog.Error(err.Error())
+		os.Exit(1)
 	}
-	logging.Log.Debug(castController.FileName)
+	slog.Debug(castController.FileName)
 
 	chromecastControl = control.NewChromeCastControl(castController)
 }
 
 func main() {
-	fmt.Println("Starting app")
 	api.StartApp("0.0.0.0", 8080, cardController, chromecastControl)
 }

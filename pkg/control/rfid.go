@@ -4,16 +4,14 @@
 package control
 
 import (
-	"bufio"
 	"context"
 	"fmt"
-	"log"
+	"time"
 
 	"go.bug.st/serial"
 )
 
 const (
-	DELIM           = 0x3
 	RFID_PACKET_LEN = 16
 )
 
@@ -25,53 +23,44 @@ func (rId RfidCardId) Repr() string {
 
 type RfidController struct {
 	serialPort string
-	port       serial.Port
 }
 
 func NewRfidController(serialPort string) *RfidController {
-	mode := &serial.Mode{
-		BaudRate: 9600,
-	}
-	port, err := serial.Open(serialPort, mode)
-	if err != nil {
-		log.Fatal(err)
-	}
 	rfidController := RfidController{
 		serialPort: serialPort,
-		port:       port,
 	}
 	return &rfidController
 }
 
 func (r *RfidController) ReadCardId(ctx context.Context) (RfidCardId, error) {
-	var err error
-	var buffer []byte
-	cardReady := make(chan bool)
-
-	go func() {
-		reader := bufio.NewReader(r.port)
-		for {
-			buffer, err = reader.ReadBytes(DELIM)
-			if err != nil {
-				return
-			}
-			if len(buffer) == RFID_PACKET_LEN {
-				cardReady <- true
-				return
-			}
-		}
-	}()
-
-	select {
-	case <-ctx.Done(): // timeout
-		err = fmt.Errorf("coult not read card by timeout")
-		goto DONE
-	case <-cardReady:
-		goto DONE
+	mode := &serial.Mode{
+		BaudRate: 9600,
 	}
-DONE:
+	port, err := serial.Open(r.serialPort, mode)
+	defer port.Close()
 	if err != nil {
 		return nil, err
 	}
+	if err := port.SetReadTimeout(1 * time.Second); err != nil {
+		return nil, err
+	}
+	buffer := make([]byte, 0)
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("could not read card by timeout")
+		default:
+			buf := make([]byte, 16)
+			n, err := port.Read(buf)
+			if err != nil {
+				return nil, err
+			}
+			buffer = append(buffer, buf[0:n]...)
+			if len(buffer) == RFID_PACKET_LEN {
+				goto DONE
+			}
+		}
+	}
+DONE:
 	return buffer[1:11], nil
 }

@@ -5,11 +5,11 @@ package control
 
 import (
 	"context"
-	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
-	"github.com/vkl/rfidplayer/pkg/logging"
+	_ "github.com/vkl/rfidplayer/pkg/logging"
 	"github.com/warthog618/gpiod"
 )
 
@@ -40,20 +40,20 @@ type EncoderEvent struct{}
 func (p *PlayerController) OptSensorHandler(e gpiod.LineEvent) {
 	switch e.Type {
 	case gpiod.LineEventRisingEdge:
-		logging.Log.Debug("card inserted")
+		slog.Debug("card inserted")
 		p.rfidResetPin.SetValue(1)
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 		cardId, err := p.rfidController.ReadCardId(ctx)
 		if err != nil {
-			logging.Log.Error(err.Error())
+			slog.Error(err.Error())
 			return
 		}
-		fmt.Println(cardId.Repr())
+		slog.Debug(cardId.Repr())
 		var card Card
 		var ok bool
 		if card, ok = p.cardController.Cards[cardId.Repr()]; !ok {
-			logging.Log.Warn("no such card", "cardId", cardId.Repr())
+			slog.Warn("no such card", "cardId", cardId.Repr())
 			return
 		}
 		p.maxVolume = int(card.MaxVolume * 100)
@@ -65,7 +65,7 @@ func (p *PlayerController) OptSensorHandler(e gpiod.LineEvent) {
 		p.ctx, p.cancel = context.WithCancel(context.Background())
 		go p.Encoder()
 	case gpiod.LineEventFallingEdge:
-		logging.Log.Debug("card pulled")
+		slog.Debug("card pulled")
 		p.rfidResetPin.SetValue(0)
 		p.chromecastController.Control(STOP)
 		if p.cancel != nil {
@@ -80,10 +80,10 @@ func (p *PlayerController) Encoder() {
 	values := make([]int, 2)
 	var encState, newState int
 	for {
-		<-p.event
+		// <-p.event
 		select {
 		case <-p.ctx.Done():
-			fmt.Println("close encoder function")
+			slog.Debug("close encoder function")
 			return
 		default:
 			p.encPins.Values(values)
@@ -157,7 +157,7 @@ func NewPlayerController(
 	// rfidController.ReadCard(ctx)
 
 	chip, _ := gpiod.NewChip("gpiochip0")
-	logging.Log.Debug("info", "lines", chip.Lines())
+	slog.Debug("info", "lines", chip.Lines())
 	var err error
 
 	player.rfidResetPin, err = chip.RequestLine(

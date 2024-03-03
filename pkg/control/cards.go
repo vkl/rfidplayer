@@ -3,10 +3,11 @@ package control
 import (
 	"encoding/json"
 	"io"
+	"log/slog"
 	"os"
 	"sync"
 
-	"github.com/vkl/rfidplayer/pkg/logging"
+	_ "github.com/vkl/rfidplayer/pkg/logging"
 )
 
 type Card struct {
@@ -56,7 +57,7 @@ func (c *CardController) updateCardList() error {
 
 func (c *CardController) GetCards() map[string]Card {
 	if err := c.updateCardList(); err != nil {
-		logging.Log.Error("", "error", err)
+		slog.Error("", "error", err)
 	}
 	return c.Cards
 }

@@ -4,12 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"os"
 	"sort"
 	"sync"
 
-	"github.com/vkl/rfidplayer/pkg/logging"
+	_ "github.com/vkl/rfidplayer/pkg/logging"
 )
 
 type Cast struct {
@@ -78,7 +79,7 @@ func (c *CastController) GetCastByName(name string) (Cast, bool) {
 
 func (c *CastController) GetCasts() Casts {
 	if err := c.updateCastList(); err != nil {
-		logging.Log.Error("", "error", err)
+		slog.Error("", "error", err)
 	}
 	sort.Sort(c.Casts)
 	return c.Casts

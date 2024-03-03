@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -16,7 +16,7 @@ import (
 	"github.com/gorilla/mux"
 
 	"github.com/vkl/rfidplayer/pkg/control"
-	"github.com/vkl/rfidplayer/pkg/logging"
+	_ "github.com/vkl/rfidplayer/pkg/logging"
 )
 
 func GetCards(cardController *control.CardController) func(http.ResponseWriter, *http.Request) {
@@ -29,7 +29,7 @@ func GetCards(cardController *control.CardController) func(http.ResponseWriter, 
 func GetCard(cardController *control.CardController) func(http.ResponseWriter, *http.Request) {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
-		logging.Log.Debug("", "vars", vars)
+		slog.Debug("", "vars", vars)
 		if _, ok := cardController.Cards[vars["id"]]; !ok {
 			w.WriteHeader(http.StatusNotFound)
 			return
@@ -45,7 +45,7 @@ func AddCard(cardController *control.CardController) func(http.ResponseWriter, *
 		card := control.Card{}
 		decoder := json.NewDecoder(r.Body)
 		if err := decoder.Decode(&card); err != nil {
-			logging.Log.Error("add card", "error", err)
+			slog.Error("add card", "error", err)
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -58,7 +58,7 @@ func AddCard(cardController *control.CardController) func(http.ResponseWriter, *
 func DelCard(cardController *control.CardController) func(http.ResponseWriter, *http.Request) {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
-		logging.Log.Debug("", "vars", vars)
+		slog.Debug("", "vars", vars)
 		cardController.DelCard(vars["id"])
 		encoder := json.NewEncoder(w)
 		encoder.Encode(cardController.Cards)
@@ -112,7 +112,7 @@ func ControlCasts(chromecastControl *control.ChromecastControl) func(http.Respon
 		decoder := json.NewDecoder(r.Body)
 		defer r.Body.Close()
 		if err := decoder.Decode(&payload); err != nil {
-			logging.Log.Error("control cast", "error", err)
+			slog.Error("control cast", "error", err)
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
@@ -127,7 +127,7 @@ func ControlCasts(chromecastControl *control.ChromecastControl) func(http.Respon
 func SiteHandler(w http.ResponseWriter, r *http.Request) {
 	tmpl, err := template.ParseFiles("templates/index.html")
 	if err != nil {
-		logging.Log.Error("parse template", "error", err)
+		slog.Error("parse template", "error", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -195,20 +195,22 @@ func StartApp(
 		signal.Notify(sigint, os.Interrupt)
 		<-sigint
 
-		logging.Log.Info("HTTP server Shutdown")
+		slog.Info("HTTP server Shutdown")
 
 		// We received an interrupt signal, shut down.
 		if err := srv.Shutdown(context.Background()); err != nil {
 			// Error from closing listeners, or context timeout:
-			logging.Log.Info("HTTP server Shutdown", "error", err)
+			slog.Info("HTTP server Shutdown", "error", err)
 		}
 
 		close(idleConnsClosed)
 	}()
 
-	logging.Log.Info("Start app")
-	log.Fatal(srv.ListenAndServe())
-	// log.Fatal(srv.ListenAndServeTLS(cert, key))
+	slog.Info("Start app")
+	if err := srv.ListenAndServe(); err != nil {
+		slog.Error(err.Error())
+		os.Exit(1)
+	}
 
 	<-idleConnsClosed
 }

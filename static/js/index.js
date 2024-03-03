@@ -240,6 +240,7 @@ async function getCasts() {
 
 window.addEventListener("load", async (event) => {
     await getCards();
+    await getCasts();
     // await updateCasts();
     updateStatus();
     const addCardBtn = document.getElementById("addcard");
