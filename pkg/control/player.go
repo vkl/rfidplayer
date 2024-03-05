@@ -14,10 +14,17 @@ import (
 )
 
 const (
-	OPT_SENSOR_PIN = 17
-	ENCODER_PIN0   = 22
-	ENCODER_PIN1   = 27
-	RFID_RESET_PIN = 26
+	OPT_SENSOR_PIN      = 17
+	ENCODER_PIN0        = 22
+	ENCODER_PIN1        = 27
+	RFID_RESET_PIN      = 26
+	BTN_PIN             = 5
+	RED_LED             = 19
+	GREEN_LED           = 13
+	BLUE_LED            = 6
+	BTN_PLAY_PUSH_DELAY = 1000 * time.Millisecond
+	BTN_NEXT_PUSH_DELAY = 3000 * time.Millisecond
+	BTN_PREV_PUSH_DELAY = 6000 * time.Millisecond
 )
 
 type PlayerController struct {
@@ -28,11 +35,16 @@ type PlayerController struct {
 	maxVolume            int
 	event                chan interface{}
 	ctx                  context.Context
+	ledCtx               context.Context
 	cancel               context.CancelFunc
+	ledCancel            context.CancelFunc
 	optPin               *gpiod.Line
 	encPins              *gpiod.Lines
+	rgbPins              *gpiod.Lines
 	rfidResetPin         *gpiod.Line
 	rfidController       *RfidController
+	btnLastRisingTime    time.Duration
+	btnLastFallenTime    time.Duration
 }
 
 type EncoderEvent struct{}
@@ -64,6 +76,7 @@ func (p *PlayerController) OptSensorHandler(e gpiod.LineEvent) {
 		}
 		p.ctx, p.cancel = context.WithCancel(context.Background())
 		go p.Encoder()
+		p.rgbPins.SetValues([]int{1, 0, 1})
 	case gpiod.LineEventFallingEdge:
 		slog.Debug("card pulled")
 		p.rfidResetPin.SetValue(0)
@@ -72,6 +85,7 @@ func (p *PlayerController) OptSensorHandler(e gpiod.LineEvent) {
 			p.cancel()
 			p.cancel = nil
 		}
+		p.rgbPins.SetValues([]int{0, 1, 1})
 	}
 }
 
@@ -80,7 +94,6 @@ func (p *PlayerController) Encoder() {
 	values := make([]int, 2)
 	var encState, newState int
 	for {
-		// <-p.event
 		select {
 		case <-p.ctx.Done():
 			slog.Debug("close encoder function")
@@ -133,9 +146,36 @@ func (p *PlayerController) Encoder() {
 	}
 }
 
-func (p *PlayerController) EncoderHandler() func(e gpiod.LineEvent) {
-	return func(e gpiod.LineEvent) {
-		p.event <- nil
+// One-button interface
+func (p *PlayerController) BtnHandler(e gpiod.LineEvent) {
+	if e.Type == gpiod.LineEventRisingEdge {
+		p.btnLastRisingTime = e.Timestamp
+		p.ledCtx, p.ledCancel = context.WithCancel(context.Background())
+		go LedControl(p.ledCtx, p.rgbPins)
+	} else if e.Type == gpiod.LineEventFallingEdge {
+		btnPushTime := e.Timestamp - p.btnLastRisingTime
+		if p.ledCancel != nil {
+			p.ledCancel()
+		}
+		switch {
+		case btnPushTime < BTN_PLAY_PUSH_DELAY:
+			if p.chromecastController.CastStatus().MediaStatus == "PAUSED" {
+				p.chromecastController.Control(PLAY)
+				p.rgbPins.SetValues([]int{1, 0, 1})
+			} else if p.chromecastController.CastStatus().MediaStatus == "PLAYING" ||
+				p.chromecastController.CastStatus().MediaStatus == "BUFFERING" {
+				p.chromecastController.Control(PAUSE)
+				p.rgbPins.SetValues([]int{1, 1, 0})
+			}
+		case btnPushTime > BTN_PLAY_PUSH_DELAY && btnPushTime < BTN_NEXT_PUSH_DELAY:
+			p.chromecastController.Control(NEXT)
+			p.rgbPins.SetValues([]int{1, 0, 1})
+		case btnPushTime > BTN_NEXT_PUSH_DELAY && btnPushTime < BTN_PREV_PUSH_DELAY:
+			p.chromecastController.Control(PREV)
+			p.rgbPins.SetValues([]int{1, 0, 1})
+		default:
+			p.rgbPins.SetValues([]int{1, 0, 1})
+		}
 	}
 }
 
@@ -180,13 +220,63 @@ func NewPlayerController(
 		[]int{ENCODER_PIN0, ENCODER_PIN1},
 		gpiod.AsInput,
 		gpiod.WithPullUp,
-		gpiod.WithEventHandler(player.EncoderHandler()),
 		gpiod.WithBothEdges,
 	)
 	if err != nil {
 		return nil, err
 	}
 
+	_, err = chip.RequestLine(
+		BTN_PIN,
+		gpiod.AsInput,
+		gpiod.WithBothEdges,
+		gpiod.WithEventHandler(player.BtnHandler),
+		gpiod.LineBiasPullDown,
+		gpiod.WithDebounce(10*time.Millisecond),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	player.rgbPins, err = chip.RequestLines(
+		[]int{RED_LED, GREEN_LED, BLUE_LED},
+		gpiod.AsOutput(0, 1, 1),
+	)
+
 	return player, nil
 
+}
+
+func LedControl(ctx context.Context, leds *gpiod.Lines) {
+	ticker := time.NewTicker(10 * time.Millisecond)
+	count := 0
+	maxCount := 20
+	start := time.Now()
+	vals := make([]int, 3)
+	for {
+		select {
+		case <-ticker.C:
+			elapsed := time.Since(start)
+			count++
+			switch {
+			case elapsed < BTN_PLAY_PUSH_DELAY:
+				continue
+			case elapsed > BTN_PLAY_PUSH_DELAY && elapsed < BTN_NEXT_PUSH_DELAY:
+			case elapsed > BTN_NEXT_PUSH_DELAY && elapsed < BTN_PREV_PUSH_DELAY:
+				maxCount = 10
+			default:
+				vals[1] = 0
+				leds.SetValues(vals)
+				continue
+			}
+			if count >= maxCount {
+				leds.Values(vals)
+				vals[1] ^= 1
+				leds.SetValues(vals)
+				count = 0
+			}
+		case <-ctx.Done():
+			return
+		}
+	}
 }
