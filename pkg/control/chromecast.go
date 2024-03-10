@@ -144,6 +144,7 @@ func (cc *ChromecastControl) PlayCard(card Card) bool {
 	ctx := context.Background()
 	if !client.IsConnected() {
 		if err := client.Connect(ctx); err != nil {
+			cc.currentChromecast = nil
 			slog.Error(err.Error())
 			return false
 		}

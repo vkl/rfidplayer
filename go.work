@@ -1,6 +1,7 @@
-go 1.21
+go 1.21.4
 
 use (
 	.
 	./libs/go-cast
+	./libs/srv
 )

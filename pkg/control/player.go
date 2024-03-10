@@ -5,6 +5,7 @@ package control
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -49,34 +50,76 @@ type PlayerController struct {
 
 type EncoderEvent struct{}
 
+func (p *PlayerController) ReadAndPlayCard() {
+	p.rfidResetPin.SetValue(1)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	cardId, err := p.rfidController.ReadCardId(ctx)
+	if err != nil {
+		slog.Error(err.Error())
+		return
+	}
+	slog.Debug(cardId.Repr())
+	var card Card
+	var ok bool
+	if card, ok = p.cardController.Cards[cardId.Repr()]; !ok {
+		slog.Warn("no such card", "cardId", cardId.Repr())
+		return
+	}
+	p.maxVolume = int(card.MaxVolume * 100)
+	cardReady := make(chan bool)
+	cardError := make(chan error)
+	ctxTimeout, cancelTimeout := context.WithTimeout(context.Background(), 10*time.Second)
+	go func() {
+		for {
+			if p.chromecastController.PlayCard(card) {
+				goto DONE
+			}
+			select {
+			case <-ctxTimeout.Done():
+				cardError <- fmt.Errorf("could not play card '%s' by timeout", cardId.Repr())
+				cancelTimeout()
+				return
+			default:
+				time.Sleep(1000 * time.Millisecond)
+			}
+		}
+	DONE:
+		cancelTimeout()
+		cardReady <- true
+	}()
+	ticker := time.NewTicker(500 * time.Millisecond)
+	vals := make([]int, 3)
+	for {
+		select {
+		case <-ticker.C:
+			p.rgbPins.Values(vals)
+			vals[0] ^= 1
+			p.rgbPins.SetValues(vals)
+		case <-cardReady:
+			goto CARD_READY
+		case err := <-cardError:
+			slog.Error(err.Error())
+			vals[0] = 0
+			p.rgbPins.SetValues(vals)
+			return
+		}
+	}
+CARD_READY:
+	volume, ok := p.chromecastController.GetVolume()
+	if ok {
+		p.volume = int(volume * 100)
+	}
+	p.ctx, p.cancel = context.WithCancel(context.Background())
+	go p.Encoder()
+	p.rgbPins.SetValues([]int{1, 0, 1})
+}
+
 func (p *PlayerController) OptSensorHandler(e gpiod.LineEvent) {
 	switch e.Type {
 	case gpiod.LineEventRisingEdge:
 		slog.Debug("card inserted")
-		p.rfidResetPin.SetValue(1)
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		cardId, err := p.rfidController.ReadCardId(ctx)
-		if err != nil {
-			slog.Error(err.Error())
-			return
-		}
-		slog.Debug(cardId.Repr())
-		var card Card
-		var ok bool
-		if card, ok = p.cardController.Cards[cardId.Repr()]; !ok {
-			slog.Warn("no such card", "cardId", cardId.Repr())
-			return
-		}
-		p.maxVolume = int(card.MaxVolume * 100)
-		p.chromecastController.PlayCard(card)
-		volume, ok := p.chromecastController.GetVolume()
-		if ok {
-			p.volume = int(volume * 100)
-		}
-		p.ctx, p.cancel = context.WithCancel(context.Background())
-		go p.Encoder()
-		p.rgbPins.SetValues([]int{1, 0, 1})
+		p.ReadAndPlayCard()
 	case gpiod.LineEventFallingEdge:
 		slog.Debug("card pulled")
 		p.rfidResetPin.SetValue(0)
@@ -242,6 +285,13 @@ func NewPlayerController(
 		[]int{RED_LED, GREEN_LED, BLUE_LED},
 		gpiod.AsOutput(0, 1, 1),
 	)
+
+	// check if card already inserted
+	// and read and play card
+	val, _ := player.optPin.Value()
+	if val == 1 {
+		player.ReadAndPlayCard()
+	}
 
 	return player, nil
 
