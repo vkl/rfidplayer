@@ -24,16 +24,17 @@ func init() {
 	}
 	slog.Debug(cardController.FileName)
 
-	castController, err = control.NewCastController("casts.json")
-	if err != nil {
-		slog.Error(err.Error())
-		os.Exit(1)
-	}
-	slog.Debug(castController.FileName)
+	// castController, err = control.NewCastController("casts.json")
+	// if err != nil {
+	// 	slog.Error(err.Error())
+	// 	os.Exit(1)
+	// }
+	// slog.Debug(castController.FileName)
+	castController = &control.CastController{}
 
 	chromecastControl = control.NewChromeCastControl(castController)
 }
 
 func main() {
-	api.StartApp("0.0.0.0", 8080, cardController, chromecastControl)
+	api.StartApp("127.0.0.1", 8080, cardController, chromecastControl)
 }

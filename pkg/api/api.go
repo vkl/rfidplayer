@@ -75,7 +75,10 @@ func PlayCard(
 			return
 		}
 		card := cardController.Cards[vars["id"]]
-		chromecastControl.PlayCard(card)
+		if !chromecastControl.PlayCard(card) {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
 		w.WriteHeader(http.StatusAccepted)
 	})
 }
@@ -91,7 +94,7 @@ func GetCasts(chromecastControl *control.ChromecastControl) func(http.ResponseWr
 
 func DiscoverCasts(chromecastControl *control.ChromecastControl) func(http.ResponseWriter, *http.Request) {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		chromecastControl.StartDiscovery(control.DISCOVERY_TIMEOUT * time.Second)
+		chromecastControl.StartDiscovery(control.DISCOVERY_DURATION * time.Second)
 		w.WriteHeader(http.StatusAccepted)
 	})
 }
@@ -121,6 +124,18 @@ func ControlCasts(chromecastControl *control.ChromecastControl) func(http.Respon
 			return
 		}
 		w.WriteHeader(http.StatusAccepted)
+	})
+}
+
+func GetVolume(chromecastControl *control.ChromecastControl) func(http.ResponseWriter, *http.Request) {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		level, ok := chromecastControl.GetVolume()
+		if !ok {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, "volume level: %f\n", level)
 	})
 }
 
@@ -172,13 +187,12 @@ func StartApp(
 	apiPrefix.HandleFunc("/cards", GetCards(cardController)).Methods("GET")
 	apiPrefix.HandleFunc("/casts", GetCasts(chromcastController)).Methods("GET")
 	apiPrefix.HandleFunc("/casts", DiscoverCasts(chromcastController)).Methods("POST")
-	apiPrefix.HandleFunc("/casts", ControlCasts(chromcastController)).Methods("PUT")
-	// apiPrefix.HandleFunc("/casts/{name}", GetCastStatus(chromcastController)).Methods("GET")
-	// apiPrefix.HandleFunc("/casts/{name}", CastStatus(chromcastController)).Methods("GET")
+	apiPrefix.HandleFunc("/control", ControlCasts(chromcastController)).Methods("PUT")
 	apiPrefix.HandleFunc("/cards", AddCard(cardController)).Methods("POST")
 	apiPrefix.HandleFunc("/cards/{id}", DelCard(cardController)).Methods("DELETE")
 	apiPrefix.HandleFunc("/cards/{id}", GetCard(cardController)).Methods("GET")
 	apiPrefix.HandleFunc("/status", CastStatus(chromcastController, cardController)).Methods("GET")
+	apiPrefix.HandleFunc("/volume", GetVolume(chromcastController)).Methods("GET")
 	apiPrefix.HandleFunc("/cards/{id}", PlayCard(chromcastController, cardController)).Methods("POST")
 	apiPrefix.HandleFunc("/debug", Debug).Methods("GET")
 

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log/slog"
 	"net"
 	"os"
 	"sort"
@@ -78,9 +77,9 @@ func (c *CastController) GetCastByName(name string) (Cast, bool) {
 }
 
 func (c *CastController) GetCasts() Casts {
-	if err := c.updateCastList(); err != nil {
-		slog.Error("", "error", err)
-	}
+	// if err := c.updateCastList(); err != nil {
+	// 	slog.Error("", "error", err)
+	// }
 	sort.Sort(c.Casts)
 	return c.Casts
 }
@@ -90,7 +89,7 @@ func (c *CastController) AddCast(cast Cast) error {
 		return fmt.Errorf("the cast %s already exists", cast.Name)
 	}
 	c.Casts = append(c.Casts, cast)
-	return c.save()
+	return nil // c.save()
 }
 
 func (c *CastController) UpdateCast(cast Cast) error {
@@ -100,18 +99,18 @@ func (c *CastController) UpdateCast(cast Cast) error {
 	for i, value := range c.Casts {
 		if cast.Name == value.Name {
 			c.Casts[i] = cast
-			return c.save()
+			return nil // c.save()
 		}
 	}
 	c.Casts = append(c.Casts, cast)
-	return c.save()
+	return nil // c.save()
 }
 
 func (c *CastController) DelCast(name string) bool {
 	for i, cast := range c.Casts {
 		if cast.Name == name {
 			c.Casts = append(c.Casts[:i], c.Casts[i+1:]...)
-			c.save()
+			// c.save()
 			return true
 		}
 	}
